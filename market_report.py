@@ -4,7 +4,7 @@ import yfinance as yf
 # =========================
 # 1. 설정 (Settings)
 # =========================
-TOKEN = "8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
+TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
 CHAT_ID = "7701788482"
 
 ALERT_UP = 2.0
