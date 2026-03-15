@@ -1,4 +1,4 @@
-name: Market Bot
+name: Scheduled test
 
 on:
   workflow_dispatch:
