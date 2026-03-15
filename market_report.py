@@ -8,6 +8,12 @@ TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
 CHAT_ID = "7701788482"
 
 # =========================
+# 알림 기준
+# =========================
+ALERT_UP = 2.0
+ALERT_DOWN = -2.0
+
+# =========================
 # 유틸
 # =========================
 def get_color(change):
@@ -15,7 +21,7 @@ def get_color(change):
         return "⚪"
     if change > 0:
         return "🔴"
-    elif change < 0:
+    if change < 0:
         return "🔵"
     return "⚪"
 
@@ -23,7 +29,6 @@ def get_color(change):
 def get_price_and_change(ticker):
     try:
         data = yf.Ticker(ticker).history(period="5d", auto_adjust=False)
-
         if data.empty or len(data) < 2:
             return None, None
 
@@ -35,14 +40,10 @@ def get_price_and_change(ticker):
 
         change_pct = ((close_today - close_prev) / close_prev) * 100
         return close_today, change_pct
-
     except Exception:
         return None, None
 
 
-# =========================
-# 글로벌 시장 포맷
-# =========================
 def format_market_line(name, ticker):
     price, change = get_price_and_change(ticker)
 
@@ -64,42 +65,40 @@ def format_market_line(name, ticker):
 # =========================
 us_gainers = []
 us_losers = []
-us_flat = []
-
 kr_gainers = []
 kr_losers = []
-kr_flat = []
+
+all_positions = []
+alerts = []
 
 
 def analyze_ticker(name, ticker, market):
     price, change = get_price_and_change(ticker)
 
     if price is None:
-        line = f"⚪ {name}: 데이터 없음"
-        if market == "US":
-            us_flat.append(line)
-        else:
-            kr_flat.append(line)
         return
 
     color = get_color(change)
 
     if market == "US":
         line = f"{color} {name}: ${price:,.2f} ({change:+.2f}%)"
-        if change is None or change == 0:
-            us_flat.append(line)
-        elif change > 0:
-            us_gainers.append((change, line))
-        else:
-            us_losers.append((change, line))
+        if change > 0:
+            us_gainers.append((change, line, name, market))
+        elif change < 0:
+            us_losers.append((change, line, name, market))
+        all_positions.append((change, line, name, market))
     else:
         line = f"{color} {name}: ₩{price:,.0f} ({change:+.2f}%)"
-        if change is None or change == 0:
-            kr_flat.append(line)
-        elif change > 0:
-            kr_gainers.append((change, line))
-        else:
-            kr_losers.append((change, line))
+        if change > 0:
+            kr_gainers.append((change, line, name, market))
+        elif change < 0:
+            kr_losers.append((change, line, name, market))
+        all_positions.append((change, line, name, market))
+
+    if change >= ALERT_UP:
+        alerts.append(f"🚀 {market} {name}: {change:+.2f}%")
+    elif change <= ALERT_DOWN:
+        alerts.append(f"⚠️ {market} {name}: {change:+.2f}%")
 
 
 # =========================
@@ -162,11 +161,45 @@ us_losers.sort(key=lambda x: x[0])
 kr_gainers.sort(key=lambda x: x[0], reverse=True)
 kr_losers.sort(key=lambda x: x[0])
 
-us_gainers_text = "\n".join([line for _, line in us_gainers]) if us_gainers else "없음"
-us_losers_text = "\n".join([line for _, line in us_losers]) if us_losers else "없음"
+all_positions_sorted_up = sorted(all_positions, key=lambda x: x[0], reverse=True)
+all_positions_sorted_down = sorted(all_positions, key=lambda x: x[0])
 
-kr_gainers_text = "\n".join([line for _, line in kr_gainers]) if kr_gainers else "없음"
-kr_losers_text = "\n".join([line for _, line in kr_losers]) if kr_losers else "없음"
+# =========================
+# Top movers
+# =========================
+top_gainers = all_positions_sorted_up[:3]
+top_losers = all_positions_sorted_down[:3]
+
+top_gainers_text = "\n".join([f"🚀 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_gainers]) if top_gainers else "없음"
+top_losers_text = "\n".join([f"💥 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_losers]) if top_losers else "없음"
+
+# =========================
+# 섹션 텍스트
+# =========================
+us_gainers_text = "\n".join([line for _, line, _, _ in us_gainers]) if us_gainers else "없음"
+us_losers_text = "\n".join([line for _, line, _, _ in us_losers]) if us_losers else "없음"
+
+kr_gainers_text = "\n".join([line for _, line, _, _ in kr_gainers]) if kr_gainers else "없음"
+kr_losers_text = "\n".join([line for _, line, _, _ in kr_losers]) if kr_losers else "없음"
+
+alerts_text = "\n".join(alerts) if alerts else "없음"
+
+# =========================
+# 시장 상태 요약
+# =========================
+market_summary = []
+
+for line in market_lines:
+    if "NASDAQ" in line:
+        market_summary.append(f"- {line}")
+    elif "S&P500" in line:
+        market_summary.append(f"- {line}")
+    elif "Bitcoin" in line:
+        market_summary.append(f"- {line}")
+    elif "USD/KRW" in line:
+        market_summary.append(f"- {line}")
+
+market_summary_text = "\n".join(market_summary)
 
 # =========================
 # 메시지 구성
@@ -175,6 +208,15 @@ message = f"""📊 Daily Market Report
 
 🌎 Global Market
 {market_text}
+
+🧭 Market Summary
+{market_summary_text}
+
+🚀 Top Movers
+{top_gainers_text}
+
+💥 Weakest Movers
+{top_losers_text}
 
 🇺🇸 US Gainers
 {us_gainers_text}
@@ -187,6 +229,9 @@ message = f"""📊 Daily Market Report
 
 🇰🇷 KR Losers
 {kr_losers_text}
+
+🚨 Alerts
+{alerts_text}
 """
 
 # =========================
