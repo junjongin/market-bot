@@ -8,62 +8,97 @@ TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
 CHAT_ID = "7701788482"
 
 # =========================
-# 시장 데이터
+# 공통 함수
 # =========================
-nasdaq = yf.Ticker("^IXIC").history(period="1d")
-sp500 = yf.Ticker("^GSPC").history(period="1d")
-btc = yf.Ticker("BTC-USD").history(period="1d")
-oil = yf.Ticker("CL=F").history(period="1d")
+def get_price_and_change(ticker):
+    data = yf.Ticker(ticker).history(period="5d")
 
-nasdaq_price = round(nasdaq["Close"].iloc[-1],2)
-sp500_price = round(sp500["Close"].iloc[-1],2)
-btc_price = round(btc["Close"].iloc[-1],2)
-oil_price = round(oil["Close"].iloc[-1],2)
+    if data.empty or len(data) < 2:
+        return None, None
+
+    close_today = data["Close"].iloc[-1]
+    close_prev = data["Close"].iloc[-2]
+    change_pct = ((close_today - close_prev) / close_prev) * 100
+
+    return close_today, change_pct
+
+
+def format_us_line(ticker):
+    price, change = get_price_and_change(ticker)
+    if price is None:
+        return f"{ticker}: 데이터 없음"
+    return f"{ticker}: ${price:,.2f} ({change:+.2f}%)"
+
+
+def format_kr_line(name, ticker):
+    price, change = get_price_and_change(ticker)
+    if price is None:
+        return f"{name}: 데이터 없음"
+    return f"{name}: ₩{price:,.0f} ({change:+.2f}%)"
+
+
+# =========================
+# 시장 지표
+# =========================
+market_tickers = {
+    "NASDAQ": "^IXIC",
+    "S&P500": "^GSPC",
+    "Bitcoin": "BTC-USD",
+    "Brent Oil": "BZ=F",
+    "USD/KRW": "KRW=X",
+}
+
+market_text_lines = []
+for name, ticker in market_tickers.items():
+    price, change = get_price_and_change(ticker)
+    if price is None:
+        market_text_lines.append(f"{name}: 데이터 없음")
+    else:
+        if name in ["Bitcoin", "Brent Oil"]:
+            market_text_lines.append(f"{name}: ${price:,.2f} ({change:+.2f}%)")
+        elif name == "USD/KRW":
+            market_text_lines.append(f"{name}: {price:,.2f} ({change:+.2f}%)")
+        else:
+            market_text_lines.append(f"{name}: {price:,.2f} ({change:+.2f}%)")
+
+market_text = "\n".join(market_text_lines)
 
 # =========================
 # 미국 포트폴리오
 # =========================
 us_portfolio = [
-"JNJ","AAPL","MSFT","SCHD","QQQM","JEPI","GOOGL","JEPQ","IEF","TLT"
+    "JNJ", "AAPL", "MSFT", "SCHD", "QQQM",
+    "JEPI", "GOOGL", "JEPQ", "IEF", "TLT"
 ]
+
+us_lines = [format_us_line(ticker) for ticker in us_portfolio]
+us_text = "\n".join(us_lines)
 
 # =========================
 # 국내 포트폴리오
-# (Yahoo Finance 티커)
 # =========================
 kr_portfolio = {
-"Samsung Electronics":"005930.KS"
+    "Samsung Electronics": "005930.KS",
+    "KODEX S&P500": "379800.KS",
+    "KOSEF 200TR": "294400.KS",
+    "TIGER 은행고배당플러스TOP10": "307710.KS",
+    "PLUS 고배당주": "161510.KS",
+    "ACE KRX금현물": "411060.KS",
+    "TIGER 미국배당다우존스타겟데일리커버드콜": "458730.KS",
+    "KIWOOM 국고채10년": "148070.KS",
+    "RISE KIS국고채30년Enhanced": "439870.KS"
 }
 
-# =========================
-# 미국 종목 데이터
-# =========================
-us_text = ""
-for ticker in us_portfolio:
-    data = yf.Ticker(ticker).history(period="1d")
-    price = round(data["Close"].iloc[-1],2)
-    us_text += f"{ticker}: ${price}\n"
-
-# =========================
-# 한국 종목 데이터
-# =========================
-kr_text = ""
-for name,ticker in kr_portfolio.items():
-    data = yf.Ticker(ticker).history(period="1d")
-    price = round(data["Close"].iloc[-1],0)
-    kr_text += f"{name}: ₩{price}\n"
+kr_lines = [format_kr_line(name, ticker) for name, ticker in kr_portfolio.items()]
+kr_text = "\n".join(kr_lines)
 
 # =========================
 # 메시지 구성
 # =========================
-message = f"""
-📊 Daily Market Report
+message = f"""📊 Daily Market Report
 
 🌎 Global Market
-NASDAQ: {nasdaq_price}
-S&P500: {sp500_price}
-BTC: ${btc_price}
-Oil: ${oil_price}
+{market_text}
 
 🇺🇸 US Portfolio
 {us_text}
@@ -77,8 +112,9 @@ Oil: ${oil_price}
 # =========================
 url = f"https://api.telegram.org/bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4/sendMessage"
 payload = {
-"chat_id": CHAT_ID,
-"text": message
+    "chat_id": CHAT_ID,
+    "text": message
 }
 
-requests.post(url, data=payload)
+response = requests.post(url, data=payload)
+print(response.text)
