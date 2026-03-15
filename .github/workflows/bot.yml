@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Debug trigger
+        run: echo "Triggered by ${{ github.event_name }}"
+
       - name: Install libraries
         run: pip install yfinance requests
 
