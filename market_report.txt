@@ -1,0 +1,40 @@
+import requests
+import yfinance as yf
+
+BOT_TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
+CHAT_ID = "7701788482"
+
+# 데이터 가져오기
+nasdaq = yf.Ticker("^IXIC").history(period="1d")["Close"].iloc[-1]
+sp500 = yf.Ticker("^GSPC").history(period="1d")["Close"].iloc[-1]
+btc = yf.Ticker("BTC-USD").history(period="1d")["Close"].iloc[-1]
+oil = yf.Ticker("BZ=F").history(period="1d")["Close"].iloc[-1]
+usdkrw = yf.Ticker("KRW=X").history(period="1d")["Close"].iloc[-1]
+
+# 리포트 메시지
+message = f"""
+📊 Morning Market Report
+
+🇺🇸 US Market
+NASDAQ: {nasdaq:.2f}
+S&P500: {sp500:.2f}
+
+💰 Crypto
+Bitcoin: ${btc:.2f}
+
+🛢 Oil
+Brent: ${oil:.2f}
+
+💱 FX
+USD/KRW: {usdkrw:.2f}
+"""
+
+# 텔레그램 전송
+url = f"https://api.telegram.org/bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4/sendMessage"
+
+payload = {
+    "chat_id": CHAT_ID,
+    "text": message
+}
+
+requests.post(url, data=payload)
