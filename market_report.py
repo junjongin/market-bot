@@ -4,7 +4,7 @@ import yfinance as yf
 # =========================
 # Telegram 설정
 # =========================
-TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
+TOKEN = "8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
 CHAT_ID = "7701788482"
 
 # =========================
