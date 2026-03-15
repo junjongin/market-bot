@@ -1,5 +1,9 @@
 import requests
 import yfinance as yf
+from datetime import datetime, timedelta
+import time
+
+start_time = time.time()
 
 # =========================
 # Telegram 설정
@@ -12,10 +16,45 @@ CHAT_ID = "7701788482"
 # =========================
 ALERT_UP = 2.0
 ALERT_DOWN = -2.0
-CRITICAL_DOWN = -3.0   # 별도 경고 메시지 기준
+CRITICAL_DOWN = -2.1 # 별도 경고 메시지 기준
 
 # =========================
-# 유틸
+# 시간 / 장 상태
+# =========================
+def get_kst_time():
+    return datetime.utcnow() + timedelta(hours=9)
+
+def get_report_time_text():
+    kst_now = get_kst_time()
+    return kst_now.strftime("%Y-%m-%d %H:%M KST")
+
+def get_market_status():
+    kst_now = get_kst_time()
+    weekday = kst_now.weekday() # 월=0, 일=6
+
+    # 한국장: 평일 09:00 ~ 15:30
+    if weekday < 5:
+        if ((kst_now.hour > 9) or (kst_now.hour == 9 and kst_now.minute >= 0)) and \
+           ((kst_now.hour < 15) or (kst_now.hour == 15 and kst_now.minute <= 30)):
+            kr_status = "OPEN"
+        else:
+            kr_status = "CLOSED"
+    else:
+        kr_status = "CLOSED"
+
+    # 미국장: 단순 버전 (KST 기준 22:30 ~ 05:00)
+    if weekday < 5:
+        if (kst_now.hour > 22 or (kst_now.hour == 22 and kst_now.minute >= 30) or kst_now.hour < 5):
+            us_status = "OPEN"
+        else:
+            us_status = "CLOSED"
+    else:
+        us_status = "CLOSED"
+
+    return kr_status, us_status
+
+# =========================
+# Telegram 전송
 # =========================
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -23,10 +62,12 @@ def send_telegram_message(text):
         "chat_id": CHAT_ID,
         "text": text
     }
-    response = requests.post(url, data=payload)
+    response = requests.post(url, data=payload, timeout=20)
     print(response.text)
 
-
+# =========================
+# 유틸
+# =========================
 def get_color(change):
     if change is None:
         return "⚪"
@@ -36,10 +77,23 @@ def get_color(change):
         return "🔵"
     return "⚪"
 
+def classify_change(change):
+    if change is None:
+        return "neutral"
+    if change >= 1.0:
+        return "strong_up"
+    if change > 0:
+        return "up"
+    if change <= -1.0:
+        return "strong_down"
+    if change < 0:
+        return "down"
+    return "neutral"
 
 def get_price_and_change(ticker):
     try:
         data = yf.Ticker(ticker).history(period="5d", auto_adjust=False)
+
         if data.empty or len(data) < 2:
             return None, None
 
@@ -54,7 +108,6 @@ def get_price_and_change(ticker):
 
     except Exception:
         return None, None
-
 
 def format_market_line(name, ticker):
     price, change = get_price_and_change(ticker)
@@ -71,6 +124,78 @@ def format_market_line(name, ticker):
     else:
         return f"{color} {name}: {price:,.2f} ({change:+.2f}%)"
 
+# =========================
+# AI 시장 분석
+# =========================
+def build_ai_insight(market_changes, top_gainers, top_losers, us_gainers, us_losers, kr_gainers, kr_losers):
+    insights = []
+
+    nasdaq_change = market_changes.get("NASDAQ")
+    sp500_change = market_changes.get("S&P500")
+    btc_change = market_changes.get("Bitcoin")
+    oil_change = market_changes.get("Brent Oil")
+    fx_change = market_changes.get("USD/KRW")
+
+    nasdaq_state = classify_change(nasdaq_change)
+    sp500_state = classify_change(sp500_change)
+    btc_state = classify_change(btc_change)
+    oil_state = classify_change(oil_change)
+    fx_state = classify_change(fx_change)
+
+    # 1. 미국 시장 분위기
+    if nasdaq_state in ["up", "strong_up"] and sp500_state in ["up", "strong_up"]:
+        insights.append("US risk sentiment looks constructive as both NASDAQ and S&P500 are rising.")
+    elif nasdaq_state in ["down", "strong_down"] and sp500_state in ["down", "strong_down"]:
+        insights.append("US risk sentiment looks weak as both NASDAQ and S&P500 are falling.")
+    elif nasdaq_state in ["up", "strong_up"] and sp500_state in ["down", "strong_down"]:
+        insights.append("Tech is outperforming the broader market, suggesting selective risk-on sentiment.")
+    elif nasdaq_state in ["down", "strong_down"] and sp500_state in ["up", "strong_up"]:
+        insights.append("Broad market strength is present, but tech is lagging.")
+
+    # 2. 비트코인
+    if btc_state == "strong_up":
+        insights.append("Bitcoin strength suggests speculative risk appetite is improving.")
+    elif btc_state == "strong_down":
+        insights.append("Bitcoin weakness suggests speculative sentiment is deteriorating.")
+
+    # 3. 유가
+    if oil_state == "strong_up":
+        insights.append("Rising oil may add inflation pressure and could be a headwind for equities.")
+    elif oil_state == "strong_down":
+        insights.append("Falling oil may ease inflation concerns and support risk assets.")
+
+    # 4. 환율
+    if fx_state in ["up", "strong_up"]:
+        insights.append("A stronger USD/KRW may weigh on Korean assets and foreign fund flows.")
+    elif fx_state in ["down", "strong_down"]:
+        insights.append("A softer USD/KRW may be supportive for Korean market sentiment.")
+
+    # 5. 미국 vs 한국 포트폴리오
+    us_strength = len(us_gainers) - len(us_losers)
+    kr_strength = len(kr_gainers) - len(kr_losers)
+
+    if us_strength > kr_strength:
+        insights.append("US portfolio names are showing relatively stronger momentum than Korean holdings.")
+    elif kr_strength > us_strength:
+        insights.append("Korean portfolio names are showing relatively stronger momentum than US holdings.")
+
+    # 6. Top mover
+    if top_gainers:
+        top_name = top_gainers[0][2]
+        top_market = top_gainers[0][3]
+        top_change = top_gainers[0][0]
+        insights.append(f"The strongest portfolio mover is {top_name} ({top_market}, {top_change:+.2f}%).")
+
+    if top_losers:
+        weak_name = top_losers[0][2]
+        weak_market = top_losers[0][3]
+        weak_change = top_losers[0][0]
+        insights.append(f"The weakest portfolio mover is {weak_name} ({weak_market}, {weak_change:+.2f}%).")
+
+    if not insights:
+        insights.append("Market signals are mixed and there is no strong directional edge right now.")
+
+    return "\n".join([f"- {x}" for x in insights[:5]])
 
 # =========================
 # 저장소
@@ -82,7 +207,6 @@ kr_losers = []
 all_positions = []
 alerts = []
 critical_alerts = []
-
 
 def analyze_ticker(name, ticker, market):
     price, change = get_price_and_change(ticker)
@@ -120,7 +244,6 @@ def analyze_ticker(name, ticker, market):
         else:
             critical_alerts.append(f"🚨 {market} {name}: ₩{price:,.0f} ({change:+.2f}%)")
 
-
 # =========================
 # 글로벌 시장
 # =========================
@@ -132,7 +255,14 @@ market_tickers = {
     "USD/KRW": "KRW=X",
 }
 
-market_lines = [format_market_line(name, ticker) for name, ticker in market_tickers.items()]
+market_lines = []
+market_changes = {}
+
+for name, ticker in market_tickers.items():
+    price, change = get_price_and_change(ticker)
+    market_changes[name] = change
+    market_lines.append(format_market_line(name, ticker))
+
 market_text = "\n".join(market_lines)
 
 # =========================
@@ -187,8 +317,13 @@ all_positions_sorted_down = sorted(all_positions, key=lambda x: x[0])
 top_gainers = all_positions_sorted_up[:3]
 top_losers = all_positions_sorted_down[:3]
 
-top_gainers_text = "\n".join([f"🚀 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_gainers]) if top_gainers else "없음"
-top_losers_text = "\n".join([f"💥 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_losers]) if top_losers else "없음"
+top_gainers_text = "\n".join(
+    [f"🚀 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_gainers]
+) if top_gainers else "없음"
+
+top_losers_text = "\n".join(
+    [f"💥 {name} ({market}): {change:+.2f}%" for change, _, name, market in top_losers]
+) if top_losers else "없음"
 
 us_gainers_text = "\n".join([line for _, line, _, _ in us_gainers]) if us_gainers else "없음"
 us_losers_text = "\n".join([line for _, line, _, _ in us_losers]) if us_losers else "없음"
@@ -198,6 +333,9 @@ kr_losers_text = "\n".join([line for _, line, _, _ in kr_losers]) if kr_losers e
 
 alerts_text = "\n".join(alerts) if alerts else "없음"
 
+# =========================
+# 시장 요약
+# =========================
 market_summary = []
 for line in market_lines:
     if "NASDAQ" in line or "S&P500" in line or "Bitcoin" in line or "USD/KRW" in line:
@@ -206,9 +344,37 @@ for line in market_lines:
 market_summary_text = "\n".join(market_summary)
 
 # =========================
+# AI 분석
+# =========================
+ai_insight_text = build_ai_insight(
+    market_changes,
+    top_gainers,
+    top_losers,
+    us_gainers,
+    us_losers,
+    kr_gainers,
+    kr_losers
+)
+
+# =========================
+# 시간 / 상태 / 실행시간
+# =========================
+report_time = get_report_time_text()
+kr_status, us_status = get_market_status()
+elapsed = time.time() - start_time
+elapsed_text = f"{elapsed:.1f}s"
+
+# =========================
 # 정규 리포트 메시지
 # =========================
 message = f"""📊 Daily Market Report
+🕒 Data Time: {report_time}
+🇰🇷 KR Market: {kr_status}
+🇺🇸 US Market: {us_status}
+⏱ Execution Time: {elapsed_text}
+
+🤖 AI Market Insight
+{ai_insight_text}
 
 🌎 Global Market
 {market_text}
@@ -244,5 +410,9 @@ send_telegram_message(message)
 # 별도 하락 경고 메시지
 # =========================
 if critical_alerts:
-    critical_message = "🚨 Critical Drop Alert (-3% 이하)\n\n" + "\n".join(critical_alerts)
+    critical_message = (
+        f"🚨 Critical Drop Alert (-3% 이하)\n"
+        f"🕒 Data Time: {report_time}\n\n"
+        + "\n".join(critical_alerts)
+    )
     send_telegram_message(critical_message)
