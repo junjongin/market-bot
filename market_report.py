@@ -4,8 +4,8 @@ import yfinance as yf
 # =========================
 # Telegram 설정
 # =========================
-TOKEN = "YOUR_TELEGRAM_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+TOKEN = "bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
+CHAT_ID = "7701788482"
 
 # =========================
 # 시장 데이터
@@ -75,7 +75,7 @@ Oil: ${oil_price}
 # =========================
 # Telegram 전송
 # =========================
-url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+url = f"https://api.telegram.org/bot8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4/sendMessage"
 payload = {
 "chat_id": CHAT_ID,
 "text": message
