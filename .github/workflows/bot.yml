@@ -3,19 +3,26 @@ name: Market Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "13,28,43,58 * * * *"
+
+concurrency:
+  group: market-bot
+  cancel-in-progress: true
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - run: pip install yfinance requests
+      - name: Install libraries
+        run: pip install yfinance requests
 
-      - run: python market_report.py
+      - name: Run script
+        run: python market_report.py
