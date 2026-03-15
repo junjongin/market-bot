@@ -411,7 +411,7 @@ send_telegram_message(message)
 # =========================
 if critical_alerts:
     critical_message = (
-        f"🚨 Critical Drop Alert (-3% 이하)\n"
+        f"🚨 Critical Drop Alert (-2% 이하)\n"
         f"🕒 Data Time: {report_time}\n\n"
         + "\n".join(critical_alerts)
     )
