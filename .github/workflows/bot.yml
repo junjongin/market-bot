@@ -26,6 +26,3 @@ jobs:
 
       - name: Run script
         run: python market_report.py
-      
-      - name: Debug trigger
-      run: echo "Triggered by ${{ github.event_name }}"
