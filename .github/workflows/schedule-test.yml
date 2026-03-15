@@ -1,14 +1,29 @@
-name: Schedule Test
+name: Market Bot
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: "*/12 * * * *"
+    - cron: "30 23 * * *"
+    - cron: "30 0-13 * * *"
+
+concurrency:
+  group: market-bot
+  cancel-in-progress: true
 
 jobs:
-  ping:
+  run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
-      - name: Show trigger
-        run: |
-          echo "Triggered by ${{ github.event_name }}"
-          date -u
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install libraries
+        run: pip install yfinance requests
+
+      - name: Run script
+        run: python market_report.py
