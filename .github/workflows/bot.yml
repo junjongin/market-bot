@@ -9,6 +9,9 @@ concurrency:
   group: market-bot
   cancel-in-progress: true
 
+- name: Debug trigger
+  run: echo "Triggered by ${{ github.event_name }}"
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
