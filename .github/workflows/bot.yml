@@ -3,7 +3,8 @@ name: Market Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "35 23 * * *"
+    - cron: "35 0-13 * * *"
 
 concurrency:
   group: market-bot
