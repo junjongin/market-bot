@@ -1,5 +1,6 @@
 import requests
 import yfinance as yf
+import os
 from datetime import datetime, timedelta
 import time
 
@@ -8,8 +9,8 @@ start_time = time.time()
 # =========================
 # Telegram 설정
 # =========================
-TOKEN = "8562414353:AAHH7aQQGRHGyMtBfbd77jvb_zVTckuYaM4"
-CHAT_ID = "7701788482"
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # =========================
 # 알림 기준
