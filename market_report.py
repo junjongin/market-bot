@@ -17,7 +17,7 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 # =========================
 ALERT_UP = 2.0
 ALERT_DOWN = -2.0
-CRITICAL_DOWN = -2.1 # 별도 경고 메시지 기준
+CRITICAL_DOWN = -2.1  # 별도 경고 메시지 기준
 
 # =========================
 # 시간 / 장 상태
@@ -31,7 +31,7 @@ def get_report_time_text():
 
 def get_market_status():
     kst_now = get_kst_time()
-    weekday = kst_now.weekday() # 월=0, 일=6
+    weekday = kst_now.weekday()  # 월=0, 일=6
 
     # 한국장: 평일 09:00 ~ 15:30
     if weekday < 5:
@@ -44,6 +44,7 @@ def get_market_status():
         kr_status = "CLOSED"
 
     # 미국장: 단순 버전 (KST 기준 22:30 ~ 05:00)
+    # 월~금 밤 + 다음날 새벽까지를 대략 반영
     if weekday < 5:
         if (kst_now.hour > 22 or (kst_now.hour == 22 and kst_now.minute >= 30) or kst_now.hour < 5):
             us_status = "OPEN"
@@ -53,6 +54,10 @@ def get_market_status():
         us_status = "CLOSED"
 
     return kr_status, us_status
+
+
+# 전역 장 상태를 먼저 확보
+kr_status, us_status = get_market_status()
 
 # =========================
 # Telegram 전송
@@ -69,14 +74,23 @@ def send_telegram_message(text):
 # =========================
 # 유틸
 # =========================
-def get_color(change):
+def get_color(change, market_open=True):
     if change is None:
+        return "⚪" if market_open else "▫️"
+
+    if market_open:
+        if change > 0:
+            return "🔴"
+        if change < 0:
+            return "🔵"
         return "⚪"
-    if change > 0:
-        return "🔴"
-    if change < 0:
-        return "🔵"
-    return "⚪"
+    else:
+        # 장 마감 시 흐린 느낌 아이콘
+        if change > 0:
+            return "🔺"
+        if change < 0:
+            return "🔻"
+        return "▫️"
 
 def classify_change(change):
     if change is None:
@@ -116,14 +130,35 @@ def format_market_line(name, ticker):
     if price is None:
         return f"⚪ {name}: 데이터 없음"
 
-    color = get_color(change)
+    # 글로벌 지표별 장 상태 반영
+    # 미국 지수/자산은 미국장 상태, 환율은 한국장 상태 기준
+    market_open = True
+    status_tag = ""
+
+    if name in ["NASDAQ", "S&P500"]:
+        market_open = (us_status == "OPEN")
+        status_tag = "" if market_open else " (마감)"
+    elif name == "USD/KRW":
+        market_open = (kr_status == "OPEN")
+        status_tag = "" if market_open else " (마감)"
+    elif name in ["Bitcoin", "Brent Oil"]:
+        # 24시간/장외 성격이 있어 음영 처리 없이 기본 표시
+        market_open = True
+        status_tag = ""
+
+    color = get_color(change, market_open)
+
+    if change is None:
+        change_text = "N/A"
+    else:
+        change_text = f"{change:+.2f}%"
 
     if name in ["Bitcoin", "Brent Oil"]:
-        return f"{color} {name}: ${price:,.2f} ({change:+.2f}%)"
+        return f"{color} {name}: ${price:,.2f} ({change_text})"
     elif name == "USD/KRW":
-        return f"{color} {name}: {price:,.2f} ({change:+.2f}%)"
+        return f"{color} {name}{status_tag}: {price:,.2f} ({change_text})"
     else:
-        return f"{color} {name}: {price:,.2f} ({change:+.2f}%)"
+        return f"{color} {name}{status_tag}: {price:,.2f} ({change_text})"
 
 # =========================
 # AI 시장 분석
@@ -215,17 +250,19 @@ def analyze_ticker(name, ticker, market):
     if price is None:
         return
 
-    color = get_color(change)
+    market_open = (us_status == "OPEN") if market == "US" else (kr_status == "OPEN")
+    color = get_color(change, market_open)
+    status_tag = "" if market_open else " (마감)"
 
     if market == "US":
-        line = f"{color} {name}: ${price:,.2f} ({change:+.2f}%)"
+        line = f"{color} {name}{status_tag}: ${price:,.2f} ({change:+.2f}%)"
         if change > 0:
             us_gainers.append((change, line, name, market))
         elif change < 0:
             us_losers.append((change, line, name, market))
         all_positions.append((change, line, name, market))
     else:
-        line = f"{color} {name}: ₩{price:,.0f} ({change:+.2f}%)"
+        line = f"{color} {name}{status_tag}: ₩{price:,.0f} ({change:+.2f}%)"
         if change > 0:
             kr_gainers.append((change, line, name, market))
         elif change < 0:
@@ -361,17 +398,19 @@ ai_insight_text = build_ai_insight(
 # 시간 / 상태 / 실행시간
 # =========================
 report_time = get_report_time_text()
-kr_status, us_status = get_market_status()
 elapsed = time.time() - start_time
 elapsed_text = f"{elapsed:.1f}s"
+
+kr_label = "🟢 장중" if kr_status == "OPEN" else "🌙 마감"
+us_label = "🟢 장중" if us_status == "OPEN" else "🌙 마감"
 
 # =========================
 # 정규 리포트 메시지
 # =========================
 message = f"""📊 Daily Market Report
 🕒 Data Time: {report_time}
-🇰🇷 KR Market: {kr_status}
-🇺🇸 US Market: {us_status}
+🇰🇷 KR Market: {kr_label}
+🇺🇸 US Market: {us_label}
 ⏱ Execution Time: {elapsed_text}
 
 🤖 AI Market Insight
